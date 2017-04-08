@@ -53,6 +53,7 @@ import org.kxml2.kdom.Node;
 import org.opendatakit.briefcase.model.BriefcaseFormDefinition;
 import org.opendatakit.briefcase.model.CryptoException;
 import org.opendatakit.briefcase.model.ExportProgressEvent;
+import org.opendatakit.briefcase.model.ExportProgressBarEvent;
 import org.opendatakit.briefcase.model.FileSystemException;
 import org.opendatakit.briefcase.model.ParsingException;
 import org.opendatakit.briefcase.model.TerminationFuture;
@@ -70,11 +71,15 @@ public class ExportToCsv implements ITransformFormAction {
   BriefcaseFormDefinition briefcaseLfd;
   TerminationFuture terminationFuture;
   Map<TreeElement, OutputStreamWriter> fileMap = new HashMap<TreeElement, OutputStreamWriter>();
-  
+  Map<String, String> fileHashMap = new HashMap<String, String>();
+
   boolean exportMedia = true;
   Date startDate;
   Date endDate;
   boolean overwrite = false;
+
+  private int totalInstances;
+  private int processedInstances;
   
   
   // Default briefcase constructor
@@ -125,6 +130,8 @@ public class ExportToCsv implements ITransformFormAction {
     }
 
     File[] instances = instancesDir.listFiles();
+    totalInstances = instances.length;
+    processedInstances = 0;
 
     // Sorts the instances by the submission date. If no submission date, we
     // assume it to be latest.
@@ -471,11 +478,38 @@ public class ExportToCsv implements ITransformFormAction {
                String destBinaryFilename = binaryFilename;
                int version = 1;
                File destFile = new File(outputMediaDir, destBinaryFilename);
-               while (destFile.exists()) {
-                 destBinaryFilename = namePart + "-" + (++version) + extPart;
-                 destFile = new File(outputMediaDir, destBinaryFilename);
+               boolean exists = false;
+               String binaryFileHash = null;
+               String destFileHash = null;
+
+               if (destFile.exists() && binaryFile.exists()) {
+                  binaryFileHash = FileSystemUtils.getMd5Hash(binaryFile);
+                
+                  while (destFile.exists()) {
+                 /* check if the contents of the destFile and binaryFile is same
+                  * if yes, skip the export of such file
+                  */
+
+                   if (fileHashMap.containsKey(destFile.getName())) {
+                      destFileHash = fileHashMap.get(destFile.getName());
+                   } else {
+                      destFileHash = FileSystemUtils.getMd5Hash(destFile);
+                      if (destFileHash != null) {
+                        fileHashMap.put(destFile.getName(), destFileHash);
+                      }
+                   }
+
+                   if (binaryFileHash != null && destFileHash != null && destFileHash.equals(binaryFileHash)) {
+                    exists = true;
+                    break;
+                   }
+
+                   destBinaryFilename = namePart + "-" + (++version) + extPart;
+                   destFile = new File(outputMediaDir, destBinaryFilename);
+                 }
+
                }
-               if ( binaryFile.exists() ) {
+               if (binaryFile.exists() && exists == false) {
                  FileUtils.copyFile(binaryFile, destFile);
                }
                emitString(osw, first, MEDIA_DIR + File.separator + destFile.getName());
@@ -786,6 +820,8 @@ public class ExportToCsv implements ITransformFormAction {
       return false;
     }
     EventBus.publish(new ExportProgressEvent("Processing instance: " + instanceDir.getName()));
+    EventBus.publish(new ExportProgressBarEvent((processedInstances+1.0)/totalInstances));
+    processedInstances++;
 
     // If we are encrypted, be sure the temporary directory
     // that will hold the unencrypted files is created and empty.
