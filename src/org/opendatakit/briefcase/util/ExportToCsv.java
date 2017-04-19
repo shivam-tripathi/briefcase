@@ -820,8 +820,6 @@ public class ExportToCsv implements ITransformFormAction {
       return false;
     }
     EventBus.publish(new ExportProgressEvent("Processing instance: " + instanceDir.getName()));
-    EventBus.publish(new ExportProgressBarEvent((processedInstances+1.0)/totalInstances));
-    processedInstances++;
 
     // If we are encrypted, be sure the temporary directory
     // that will hold the unencrypted files is created and empty.
